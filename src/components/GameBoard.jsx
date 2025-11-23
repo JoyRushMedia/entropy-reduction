@@ -1,5 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import Tile from './Tile';
+import ParticleBurst from './ParticleBurst';
 import {
   calculateReward,
   detectNearMiss,
@@ -14,12 +16,20 @@ import {
 } from '../lib/gameLogic';
 
 /**
- * GameBoard Component
- * Implements the Entropy-Reduction Core Loop with psychological principles
+ * GameBoard Component (JUICE-INJECTED)
+ * Implements the Entropy-Reduction Core Loop with AGGRESSIVE visual feedback
+ * Features: AnimatePresence, particle bursts, screen shake, border flash
  */
 
-const GRID_SIZE = 6; // 6x6 grid
+const GRID_SIZE = 6;
 let tileIdCounter = 0;
+
+// Spring physics for stat displays
+const SPRING_CONFIG = {
+  type: 'spring',
+  stiffness: 300,
+  damping: 20,
+};
 
 export default function GameBoard() {
   // ============================================
@@ -34,13 +44,14 @@ export default function GameBoard() {
   const [isNearMiss, setIsNearMiss] = useState(false);
   const [criticalMessage, setCriticalMessage] = useState(null);
   const [shake, setShake] = useState(false);
+  const [particleBursts, setParticleBursts] = useState([]);
+  const gameBoardRef = useRef(null);
 
   // ============================================
   // INITIALIZATION
   // ============================================
 
   useEffect(() => {
-    // Spawn initial tiles
     const initialTiles = [];
     for (let i = 0; i < 12; i++) {
       const position = generateRandomPosition(GRID_SIZE, initialTiles);
@@ -68,11 +79,9 @@ export default function GameBoard() {
 
   // ============================================
   // ZEIGARNIK EFFECT: CONTINUOUS ENTROPY GENERATION
-  // cite: 107, 110 - Never allow full closure
   // ============================================
 
   useEffect(() => {
-    // Don't spawn if board is too full
     if (tiles.length >= GRID_SIZE * GRID_SIZE - 4) return;
 
     const spawnTimer = setTimeout(() => {
@@ -109,27 +118,35 @@ export default function GameBoard() {
     const now = Date.now();
     const timeSinceLastClear = now - lastClearTime;
 
+    // Get tile position for particle burst
+    const clearedTile = tiles.find(t => t.id === tileId);
+    const tileElement = document.querySelector(`[data-tile-id="${tileId}"]`);
+
     setTiles(prev => {
       const newTiles = prev.filter(t => t.id !== tileId);
 
-      // Check for near-miss (cite: 173, 176)
-      const targetClears = Math.floor(prev.length * 0.3); // Target 30% reduction
+      // Near-miss detection
+      const targetClears = Math.floor(prev.length * 0.3);
       const actualClears = 1;
       const completion = calculateCompletionPercentage(actualClears, targetClears);
 
       if (detectNearMiss(completion)) {
         setIsNearMiss(true);
-        setTimeout(() => setIsNearMiss(false), 2000);
+        setShake(true); // SHAKE on near-miss
+        setTimeout(() => {
+          setIsNearMiss(false);
+          setShake(false);
+        }, 800);
       }
 
       return newTiles;
     });
 
-    // Update combo (cite: 45 - Escalating dopamine)
+    // Update combo
     const newCombo = updateCombo(combo, true, timeSinceLastClear);
     setCombo(newCombo);
 
-    // Calculate reward with Variable Ratio Schedule (cite: 37, 38)
+    // Calculate reward with Variable Ratio Schedule
     const reward = calculateReward(
       GAME_CONFIG.BASE_POINTS_PER_CLEAR,
       newCombo
@@ -138,17 +155,40 @@ export default function GameBoard() {
     setScore(prev => prev + reward.points);
     setLastClearTime(now);
 
-    // Display critical message if triggered (cite: 45 - Positive Prediction Error)
+    // CRITICAL CLEAR FEEDBACK
     if (reward.isCritical) {
       setCriticalMessage(reward.message);
-      setShake(true); // Screen shake for impact
+      setShake(true);
+
+      // Trigger particle burst at tile position
+      if (tileElement && clearedTile) {
+        const rect = tileElement.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+
+        const burstId = Date.now();
+        setParticleBursts(prev => [
+          ...prev,
+          {
+            id: burstId,
+            x: centerX,
+            y: centerY,
+            color: '#a855f7', // Violet for critical
+          },
+        ]);
+
+        // Remove burst after animation completes
+        setTimeout(() => {
+          setParticleBursts(prev => prev.filter(b => b.id !== burstId));
+        }, 1200);
+      }
 
       setTimeout(() => {
         setCriticalMessage(null);
         setShake(false);
       }, 1000);
     }
-  }, [combo, lastClearTime]);
+  }, [combo, lastClearTime, tiles]);
 
   // ============================================
   // AUTO-CLEAR DETECTION
@@ -161,107 +201,268 @@ export default function GameBoard() {
   // ============================================
 
   return (
-    <div className={`
-      w-full h-full
-      flex flex-col
-      p-8
-      ${shake ? 'animate-screen-shake' : ''}
-    `}>
-      {/* Header Stats */}
-      <div className="flex justify-between items-start mb-8">
-        {/* Score */}
-        <div className="chamfer-sm bg-void-surface border-2 border-neon-cyan p-4 min-w-[200px]">
-          <div className="text-header text-neon-cyan text-sm mb-1">SCORE</div>
-          <div className="text-score text-4xl text-white">{score}</div>
-        </div>
-
-        {/* Combo */}
-        <div className={`
-          chamfer-sm bg-void-surface border-2 p-4 min-w-[150px]
-          ${combo > 1 ? 'border-neon-amber shadow-[0_0_20px_#ffb000]' : 'border-void-border'}
-        `}>
-          <div className="text-header text-neon-amber text-sm mb-1">COMBO</div>
-          <div className="text-score text-3xl text-white">
-            {combo > 0 ? `x${combo}` : '--'}
-          </div>
-        </div>
-
-        {/* Entropy Level */}
-        <div className="chamfer-sm bg-void-surface border-2 border-chaos p-4 min-w-[200px]">
-          <div className="text-header text-chaos text-sm mb-1">ENTROPY</div>
-          <div className="flex items-center gap-2">
-            <div className="text-score text-3xl text-white">{entropyLevel}%</div>
-            <div className="flex-1 h-2 bg-void-deep rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-order to-chaos transition-all duration-300"
-                style={{ width: `${entropyLevel}%` }}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Critical Message Overlay */}
-      {criticalMessage && (
-        <div className="fixed inset-0 flex items-center justify-center pointer-events-none z-50">
-          <div className="text-impact text-6xl text-neon-violet animate-glitch opacity-90">
-            {criticalMessage}
-          </div>
-        </div>
-      )}
-
-      {/* Near Miss Feedback */}
-      {isNearMiss && (
-        <div className="fixed top-1/3 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none z-40">
-          <div className="text-header text-2xl text-neon-magenta opacity-80">
-            SO CLOSE! 85% COMPLETE
-          </div>
-        </div>
-      )}
-
-      {/* Game Board */}
-      <div className="flex-1 flex items-center justify-center scanlines">
-        <div className="chamfer-tech bg-void-deep border-2 border-neon-cyan p-6 shadow-[0_0_40px_#00f0ff]">
-          <div
-            className="grid gap-2"
+    <div
+      ref={gameBoardRef}
+      className={`
+        w-full h-full
+        flex flex-col
+        p-8
+      `}
+    >
+      {/* SCREEN SHAKE CONTAINER */}
+      <motion.div
+        className="w-full h-full flex flex-col"
+        animate={{
+          x: shake ? [0, -4, 4, -4, 4, 0] : 0,
+          y: shake ? [0, 4, -4, 4, -4, 0] : 0,
+        }}
+        transition={{ duration: 0.4 }}
+      >
+        {/* Header Stats */}
+        <div className="flex justify-between items-start mb-8 gap-6">
+          {/* Score */}
+          <motion.div
+            className="chamfer-sm bg-void-surface border-2 border-neon-cyan p-4 min-w-[200px] relative"
             style={{
-              gridTemplateColumns: `repeat(${GRID_SIZE}, 1fr)`,
-              gridTemplateRows: `repeat(${GRID_SIZE}, 1fr)`,
-              width: `${GRID_SIZE * 70}px`,
-              height: `${GRID_SIZE * 70}px`,
+              boxShadow: '0 0 20px #00f0ff, inset 0 0 20px rgba(0, 240, 255, 0.2)',
+            }}
+            whileHover={{
+              scale: 1.02,
+              boxShadow: '0 0 40px #00f0ff, inset 0 0 30px rgba(0, 240, 255, 0.3)',
+            }}
+            transition={SPRING_CONFIG}
+          >
+            <div className="text-header text-neon-cyan text-sm mb-1">SCORE</div>
+            <motion.div
+              className="text-score text-4xl text-white"
+              key={score}
+              initial={{ scale: 1.3, color: '#00f0ff' }}
+              animate={{ scale: 1, color: '#ffffff' }}
+              transition={{ duration: 0.3 }}
+            >
+              {score.toLocaleString()}
+            </motion.div>
+          </motion.div>
+
+          {/* Combo */}
+          <motion.div
+            className={`
+              chamfer-sm bg-void-surface border-2 p-4 min-w-[150px]
+            `}
+            style={{
+              borderColor: combo > 1 ? '#ffb000' : '#1a1a28',
+              boxShadow: combo > 1
+                ? '0 0 30px #ffb000, inset 0 0 20px rgba(255, 176, 0, 0.2)'
+                : 'none',
+            }}
+            animate={{
+              scale: combo > 1 ? [1, 1.05, 1] : 1,
+            }}
+            transition={{ duration: 0.3 }}
+          >
+            <div className="text-header text-neon-amber text-sm mb-1">COMBO</div>
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={combo}
+                className="text-score text-3xl text-white"
+                initial={{ y: -20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: 20, opacity: 0 }}
+                transition={SPRING_CONFIG}
+              >
+                {combo > 0 ? `x${combo}` : '--'}
+              </motion.div>
+            </AnimatePresence>
+          </motion.div>
+
+          {/* Entropy Level */}
+          <motion.div
+            className={`
+              chamfer-sm bg-void-surface border-2 p-4 min-w-[200px]
+            `}
+            style={{
+              borderColor: entropyLevel > 70 ? '#ff3366' : '#1a1a28',
+              boxShadow: entropyLevel > 70
+                ? '0 0 30px #ff3366, inset 0 0 20px rgba(255, 51, 102, 0.2)'
+                : 'none',
+            }}
+            animate={{
+              scale: entropyLevel > 80 ? [1, 1.02, 1] : 1,
+            }}
+            transition={{
+              duration: 0.5,
+              repeat: entropyLevel > 80 ? Infinity : 0,
             }}
           >
-            {/* Render grid cells */}
-            {Array.from({ length: GRID_SIZE * GRID_SIZE }).map((_, index) => {
-              const x = index % GRID_SIZE;
-              const y = Math.floor(index / GRID_SIZE);
-              const tile = tiles.find(t => t.x === x && t.y === y);
-
-              return (
-                <div
-                  key={`cell-${x}-${y}`}
-                  className="relative bg-void-surface border border-void-border"
-                >
-                  {tile && (
-                    <Tile
-                      tile={tile}
-                      onClear={handleTileClear}
-                      isClearable={clearableTileIds.includes(tile.id)}
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
+            <div className="text-header text-chaos text-sm mb-1">ENTROPY</div>
+            <div className="flex items-center gap-2">
+              <motion.div
+                className="text-score text-3xl text-white"
+                animate={{
+                  color: entropyLevel > 70 ? '#ff3366' : '#ffffff',
+                }}
+              >
+                {entropyLevel}%
+              </motion.div>
+              <div className="flex-1 h-2 bg-void-deep rounded-full overflow-hidden">
+                <motion.div
+                  className="h-full bg-gradient-to-r from-order to-chaos"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${entropyLevel}%` }}
+                  transition={{ duration: 0.5, ease: 'easeOut' }}
+                />
+              </div>
+            </div>
+          </motion.div>
         </div>
-      </div>
 
-      {/* Footer Info */}
-      <div className="mt-6 text-center text-text-muted text-sm font-exo">
-        <p className="tracking-moderate">
-          CLICK TILES TO CLEAR • MATCH 3+ TO REDUCE ENTROPY
-        </p>
-      </div>
+        {/* Critical Message Overlay */}
+        <AnimatePresence>
+          {criticalMessage && (
+            <motion.div
+              className="fixed inset-0 flex items-center justify-center pointer-events-none z-50"
+              initial={{ opacity: 0, scale: 0.5 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 1.5 }}
+              transition={{
+                type: 'spring',
+                stiffness: 500,
+                damping: 20,
+              }}
+            >
+              <motion.div
+                className="text-impact text-6xl text-neon-violet"
+                style={{
+                  textShadow: '0 0 40px #a855f7, 0 0 80px #a855f7',
+                }}
+                animate={{
+                  scale: [1, 1.1, 1],
+                  filter: [
+                    'hue-rotate(0deg)',
+                    'hue-rotate(180deg)',
+                    'hue-rotate(0deg)',
+                  ],
+                }}
+                transition={{
+                  duration: 0.5,
+                  repeat: 1,
+                }}
+              >
+                {criticalMessage}
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Near Miss Feedback */}
+        <AnimatePresence>
+          {isNearMiss && (
+            <motion.div
+              className="fixed top-1/3 left-1/2 pointer-events-none z-40"
+              initial={{ x: '-50%', y: -50, opacity: 0, scale: 0.5 }}
+              animate={{
+                x: '-50%',
+                y: 0,
+                opacity: 1,
+                scale: 1,
+              }}
+              exit={{ y: 50, opacity: 0, scale: 0.5 }}
+              transition={SPRING_CONFIG}
+            >
+              <div
+                className="text-header text-2xl text-neon-magenta px-8 py-4 chamfer-sm border-2 border-neon-magenta bg-void-deep"
+                style={{
+                  boxShadow: '0 0 40px #ff00ff, inset 0 0 20px rgba(255, 0, 255, 0.3)',
+                }}
+              >
+                SO CLOSE! 85% COMPLETE
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Game Board */}
+        <div className="flex-1 flex items-center justify-center scanlines">
+          <motion.div
+            className="chamfer-tech bg-void-deep border-2 p-6"
+            style={{
+              borderColor: isNearMiss ? '#ff3366' : '#00f0ff',
+              boxShadow: isNearMiss
+                ? '0 0 60px #ff3366'
+                : '0 0 40px #00f0ff',
+            }}
+            animate={{
+              borderColor: isNearMiss
+                ? ['#ff3366', '#ffb000', '#ff3366']
+                : '#00f0ff',
+            }}
+            transition={{ duration: 0.3 }}
+          >
+            <div
+              className="grid gap-2"
+              style={{
+                gridTemplateColumns: `repeat(${GRID_SIZE}, 1fr)`,
+                gridTemplateRows: `repeat(${GRID_SIZE}, 1fr)`,
+                width: `${GRID_SIZE * 70}px`,
+                height: `${GRID_SIZE * 70}px`,
+              }}
+            >
+              {/* Render grid cells */}
+              {Array.from({ length: GRID_SIZE * GRID_SIZE }).map((_, index) => {
+                const x = index % GRID_SIZE;
+                const y = Math.floor(index / GRID_SIZE);
+                const tile = tiles.find(t => t.x === x && t.y === y);
+
+                return (
+                  <div
+                    key={`cell-${x}-${y}`}
+                    className="relative bg-void-surface border border-void-border"
+                    data-tile-id={tile?.id}
+                  >
+                    <AnimatePresence mode="wait">
+                      {tile && (
+                        <Tile
+                          key={tile.id}
+                          tile={tile}
+                          onClear={handleTileClear}
+                          isClearable={clearableTileIds.includes(tile.id)}
+                        />
+                      )}
+                    </AnimatePresence>
+                  </div>
+                );
+              })}
+            </div>
+          </motion.div>
+        </div>
+
+        {/* Footer Info */}
+        <motion.div
+          className="mt-6 text-center text-text-muted text-sm font-exo"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+        >
+          <p className="tracking-moderate">
+            CLICK TILES TO CLEAR • MATCH 3+ TO REDUCE ENTROPY
+          </p>
+        </motion.div>
+      </motion.div>
+
+      {/* Particle Bursts */}
+      <AnimatePresence>
+        {particleBursts.map(burst => (
+          <ParticleBurst
+            key={burst.id}
+            x={burst.x}
+            y={burst.y}
+            color={burst.color}
+            onComplete={() => {
+              setParticleBursts(prev => prev.filter(b => b.id !== burst.id));
+            }}
+          />
+        ))}
+      </AnimatePresence>
     </div>
   );
 }
