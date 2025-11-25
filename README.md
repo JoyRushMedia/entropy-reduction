@@ -53,8 +53,8 @@ A high-velocity arcade puzzle game with a cyberpunk aesthetic. Clear matching ti
 
 ```bash
 # Clone the repository
-git clone https://github.com/JoyRushMedia/your-new-gaming-addiction.git
-cd your-new-gaming-addiction
+git clone https://github.com/JoyRushMedia/entropy-reduction.git
+cd entropy-reduction
 
 # Install dependencies
 npm install
