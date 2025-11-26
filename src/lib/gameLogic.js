@@ -383,8 +383,51 @@ export function createGridMap(tiles) {
 }
 
 /**
- * Finds all tiles that are part of the same match group as the clicked tile
- * Returns all connected tiles in horizontal and vertical matches
+ * Flood-fill to find all connected tiles of the same type
+ * @param {Object} grid - Grid map
+ * @param {Object} startTile - Starting tile
+ * @param {number} gridSize - Size of grid
+ * @returns {Array} - Array of connected tiles
+ */
+function floodFillConnected(grid, startTile, gridSize) {
+  const connected = [];
+  const visited = new Set();
+  const queue = [startTile];
+  const targetType = startTile.type;
+
+  while (queue.length > 0) {
+    const tile = queue.shift();
+    const key = `${tile.x},${tile.y}`;
+
+    if (visited.has(key)) continue;
+    visited.add(key);
+    connected.push(tile);
+
+    // Check all 4 adjacent positions
+    const neighbors = [
+      { x: tile.x - 1, y: tile.y },
+      { x: tile.x + 1, y: tile.y },
+      { x: tile.x, y: tile.y - 1 },
+      { x: tile.x, y: tile.y + 1 },
+    ];
+
+    for (const pos of neighbors) {
+      if (pos.x < 0 || pos.x >= gridSize || pos.y < 0 || pos.y >= gridSize) continue;
+      const neighborKey = `${pos.x},${pos.y}`;
+      if (visited.has(neighborKey)) continue;
+      const neighborTile = grid[neighborKey];
+      if (neighborTile && neighborTile.type === targetType) {
+        queue.push(neighborTile);
+      }
+    }
+  }
+
+  return connected;
+}
+
+/**
+ * Finds all tiles connected to the clicked tile (same color, adjacent)
+ * COLLAPSE STYLE: Returns group if 2+ tiles connected
  *
  * @param {Array} tiles - Array of tile objects with {x, y, type, id}
  * @param {number} clickedTileId - ID of the tile that was clicked
@@ -395,67 +438,20 @@ export function findMatchingGroup(tiles, clickedTileId, gridSize) {
   const clickedTile = tiles.find(t => t.id === clickedTileId);
   if (!clickedTile) return [];
 
-  const matchingIds = new Set();
   const grid = createGridMap(tiles);
+  const connected = floodFillConnected(grid, clickedTile, gridSize);
 
-  // Find horizontal match containing clicked tile
-  const horizontalMatch = [];
-  // Scan left
-  for (let x = clickedTile.x; x >= 0; x--) {
-    const tile = grid[`${x},${clickedTile.y}`];
-    if (tile && tile.type === clickedTile.type) {
-      horizontalMatch.push(tile);
-    } else {
-      break;
-    }
-  }
-  // Scan right (skip clicked tile position, already added)
-  for (let x = clickedTile.x + 1; x < gridSize; x++) {
-    const tile = grid[`${x},${clickedTile.y}`];
-    if (tile && tile.type === clickedTile.type) {
-      horizontalMatch.push(tile);
-    } else {
-      break;
-    }
+  // Collapse style: need 2+ connected tiles
+  if (connected.length >= 2) {
+    return connected.map(t => t.id);
   }
 
-  // Add horizontal match if 3+
-  if (horizontalMatch.length >= 3) {
-    horizontalMatch.forEach(t => matchingIds.add(t.id));
-  }
-
-  // Find vertical match containing clicked tile
-  const verticalMatch = [];
-  // Scan up
-  for (let y = clickedTile.y; y >= 0; y--) {
-    const tile = grid[`${clickedTile.x},${y}`];
-    if (tile && tile.type === clickedTile.type) {
-      verticalMatch.push(tile);
-    } else {
-      break;
-    }
-  }
-  // Scan down (skip clicked tile position, already added)
-  for (let y = clickedTile.y + 1; y < gridSize; y++) {
-    const tile = grid[`${clickedTile.x},${y}`];
-    if (tile && tile.type === clickedTile.type) {
-      verticalMatch.push(tile);
-    } else {
-      break;
-    }
-  }
-
-  // Add vertical match if 3+
-  if (verticalMatch.length >= 3) {
-    verticalMatch.forEach(t => matchingIds.add(t.id));
-  }
-
-  return Array.from(matchingIds);
+  return [];
 }
 
 /**
- * Checks if tiles can be cleared (matched)
- * Simple match-3 style logic for demonstration
+ * Finds all clearable tile groups (2+ connected same-colored tiles)
+ * COLLAPSE STYLE: Any group of 2+ adjacent same-colored tiles is clearable
  *
  * @param {Array} tiles - Array of tile objects with {x, y, type}
  * @param {number} gridSize - Size of grid
@@ -464,76 +460,18 @@ export function findMatchingGroup(tiles, clickedTileId, gridSize) {
 export function findClearableTiles(tiles, gridSize) {
   const clearable = new Set();
   const grid = createGridMap(tiles);
+  const processed = new Set();
 
-  // Check horizontal matches
-  for (let y = 0; y < gridSize; y++) {
-    let matchCount = 1;
-    let matchType = null;
+  for (const tile of tiles) {
+    const key = `${tile.x},${tile.y}`;
+    if (processed.has(key)) continue;
 
-    for (let x = 0; x < gridSize; x++) {
-      const key = `${x},${y}`;
-      const tile = grid[key];
+    const connected = floodFillConnected(grid, tile, gridSize);
+    connected.forEach(t => processed.add(`${t.x},${t.y}`));
 
-      if (tile && tile.type === matchType) {
-        matchCount++;
-      } else {
-        if (matchCount >= 3) {
-          // Mark previous tiles as clearable
-          for (let i = x - matchCount; i < x; i++) {
-            const matchKey = `${i},${y}`;
-            if (grid[matchKey]) {
-              clearable.add(grid[matchKey].id);
-            }
-          }
-        }
-        matchCount = 1;
-        matchType = tile ? tile.type : null;
-      }
-    }
-
-    // Check end of row
-    if (matchCount >= 3) {
-      for (let i = gridSize - matchCount; i < gridSize; i++) {
-        const matchKey = `${i},${y}`;
-        if (grid[matchKey]) {
-          clearable.add(grid[matchKey].id);
-        }
-      }
-    }
-  }
-
-  // Check vertical matches
-  for (let x = 0; x < gridSize; x++) {
-    let matchCount = 1;
-    let matchType = null;
-
-    for (let y = 0; y < gridSize; y++) {
-      const key = `${x},${y}`;
-      const tile = grid[key];
-
-      if (tile && tile.type === matchType) {
-        matchCount++;
-      } else {
-        if (matchCount >= 3) {
-          for (let i = y - matchCount; i < y; i++) {
-            const matchKey = `${x},${i}`;
-            if (grid[matchKey]) {
-              clearable.add(grid[matchKey].id);
-            }
-          }
-        }
-        matchCount = 1;
-        matchType = tile ? tile.type : null;
-      }
-    }
-
-    if (matchCount >= 3) {
-      for (let i = gridSize - matchCount; i < gridSize; i++) {
-        const matchKey = `${x},${i}`;
-        if (grid[matchKey]) {
-          clearable.add(grid[matchKey].id);
-        }
-      }
+    // Collapse style: 2+ connected = clearable
+    if (connected.length >= 2) {
+      connected.forEach(t => clearable.add(t.id));
     }
   }
 
@@ -541,56 +479,17 @@ export function findClearableTiles(tiles, gridSize) {
 }
 
 /**
- * Find all valid swap moves that would create a match
- * Returns array of {tile1, tile2, direction} objects
+ * Find all match groups after gravity (for cascade detection)
+ * Returns array of tile IDs that form matches
  */
-export function findValidMoves(tiles, gridSize) {
-  const validMoves = [];
-  const grid = createGridMap(tiles);
-
-  // Check all possible horizontal and vertical swaps
-  for (const tile of tiles) {
-    const directions = [
-      { dx: 1, dy: 0, dir: 'right' },
-      { dx: 0, dy: 1, dir: 'down' },
-    ];
-
-    for (const { dx, dy, dir } of directions) {
-      const targetX = tile.x + dx;
-      const targetY = tile.y + dy;
-
-      // Check bounds
-      if (targetX >= gridSize || targetY >= gridSize) continue;
-
-      const targetKey = `${targetX},${targetY}`;
-      const targetTile = grid[targetKey];
-      if (!targetTile) continue;
-
-      // Simulate the swap
-      const swappedTiles = tiles.map(t => {
-        if (t.id === tile.id) return { ...t, x: targetX, y: targetY };
-        if (t.id === targetTile.id) return { ...t, x: tile.x, y: tile.y };
-        return t;
-      });
-
-      // Check if swap creates a match
-      const matches = findClearableTiles(swappedTiles, gridSize);
-      if (matches.length > 0) {
-        validMoves.push({
-          tile1: tile,
-          tile2: targetTile,
-          direction: dir,
-        });
-      }
-    }
-  }
-
-  return validMoves;
+export function findAllMatches(tiles, gridSize) {
+  // In collapse style, this is the same as findClearableTiles
+  return findClearableTiles(tiles, gridSize);
 }
 
 /**
- * Shuffle tiles on the board to create new possibilities
- * Ensures at least one valid move exists after shuffle
+ * Shuffle tiles on the board to create new matching possibilities
+ * Ensures at least one clearable group exists after shuffle
  */
 export function shuffleTiles(tiles, gridSize) {
   const types = ['cyan', 'magenta', 'amber', 'violet'];
@@ -599,9 +498,9 @@ export function shuffleTiles(tiles, gridSize) {
     type: types[Math.floor(Math.random() * types.length)],
   }));
 
-  // Keep shuffling until we have at least one valid move
+  // Keep shuffling until we have at least one clearable group
   let attempts = 0;
-  while (findValidMoves(shuffled, gridSize).length === 0 && attempts < 100) {
+  while (findClearableTiles(shuffled, gridSize).length === 0 && attempts < 100) {
     shuffled = tiles.map(t => ({
       ...t,
       type: types[Math.floor(Math.random() * types.length)],
@@ -675,18 +574,6 @@ export function applyGravity(tiles, gridSize) {
   }
 
   return { newTiles, fallAnimations };
-}
-
-/**
- * Checks if there are any matches after gravity is applied
- * Used for cascade detection
- *
- * @param {Array} tiles - Tiles after gravity
- * @param {number} gridSize - Size of grid
- * @returns {Array} - Array of all tile IDs that form matches
- */
-export function findAllMatches(tiles, gridSize) {
-  return findClearableTiles(tiles, gridSize);
 }
 
 /**

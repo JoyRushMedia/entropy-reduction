@@ -19,7 +19,6 @@ import {
   recordPlay,
   applyGravity,
   findAllMatches,
-  findValidMoves,
   shuffleTiles,
   GAME_CONFIG,
 } from '../lib/gameLogic';
@@ -34,11 +33,11 @@ import {
 import { soundManager } from '../lib/sounds';
 
 /**
- * GameBoard Component - ENHANCED WITH GRAVITY, CASCADE & SWAP MECHANICS
- * Features: Responsive grid, gravity, chain reactions, swipe/drag to swap
+ * GameBoard Component - COLLAPSE STYLE MATCHING
+ * Features: Responsive grid, gravity, chain reactions, tap to clear 2+ connected tiles
  */
 
-const GRID_SIZE = 6;
+const GRID_SIZE = 8;
 let tileIdCounter = 0;
 
 const GAME_PHASE = {
@@ -116,8 +115,6 @@ export default function GameBoard({
   // Cascade & Animation State
   const [gamePhase, setGamePhase] = useState(GAME_PHASE.IDLE);
   const cascadeLevelRef = useRef(0);
-  const [selectedTile, setSelectedTile] = useState(null);
-  const [swappingTileIds, setSwappingTileIds] = useState(new Set()); // Track tiles being swapped
 
   // Level Mode State
   const [maxChain, setMaxChain] = useState(0); // Track max cascade chain
@@ -169,30 +166,13 @@ export default function GameBoard({
     return findClearableTiles(tiles, GRID_SIZE);
   }, [tiles, gamePhase]);
 
-  // Find valid swap moves (for hint system and detecting "no moves" state)
-  const validMoves = useMemo(() => {
-    if (gamePhase !== GAME_PHASE.IDLE) return [];
-    return findValidMoves(tiles, GRID_SIZE);
-  }, [tiles, gamePhase]);
-
-  // Track hint tiles to highlight
-  const [hintTileIds, setHintTileIds] = useState(new Set());
+  // Track "no moves" state - when no clearable tiles exist
   const [showNoMoves, setShowNoMoves] = useState(false);
 
-  // Check for no valid moves (no clearable tiles AND no valid swaps)
+  // Check for no moves (no clearable groups of 2+)
   const hasNoMoves = useMemo(() => {
-    return clearableTileIds.length === 0 && validMoves.length === 0 && tiles.length >= 6;
-  }, [clearableTileIds, validMoves, tiles.length]);
-
-  // Show hint - highlight a random valid move
-  const showHint = useCallback(() => {
-    if (validMoves.length > 0) {
-      const randomMove = validMoves[Math.floor(Math.random() * validMoves.length)];
-      setHintTileIds(new Set([randomMove.tile1.id, randomMove.tile2.id]));
-      // Clear hint after 2 seconds
-      setTimeout(() => setHintTileIds(new Set()), 2000);
-    }
-  }, [validMoves]);
+    return clearableTileIds.length === 0 && tiles.length >= 8;
+  }, [clearableTileIds, tiles.length]);
 
   // Shuffle the board when no moves available
   const handleShuffle = useCallback(() => {
@@ -372,7 +352,6 @@ export default function GameBoard({
     setTilesCleared(0);
     setGamePhase(GAME_PHASE.IDLE);
     cascadeLevelRef.current = 0;
-    setSelectedTile(null);
     lastDifficultyLevel.current = 1;
     // Reset level-specific state
     setMaxChain(0);
@@ -782,84 +761,6 @@ ${streak > 1 ? `🔥 ${streak} Day Streak!` : ''}`;
   }, [combo, tiles, createScorePopup]);
 
   // ============================================
-  // SWAP HANDLER
-  // ============================================
-
-  const handleSwap = useCallback((tile, direction) => {
-    if (isGameOver || gamePhase !== GAME_PHASE.IDLE) return;
-
-    initSound();
-
-    // Find target position
-    let targetX = tile.x;
-    let targetY = tile.y;
-
-    switch (direction) {
-      case 'up': targetY--; break;
-      case 'down': targetY++; break;
-      case 'left': targetX--; break;
-      case 'right': targetX++; break;
-      default: return;
-    }
-
-    // Check bounds
-    if (targetX < 0 || targetX >= GRID_SIZE || targetY < 0 || targetY >= GRID_SIZE) {
-      return;
-    }
-
-    // Find target tile
-    const targetTile = tiles.find(t => t.x === targetX && t.y === targetY);
-    if (!targetTile) return;
-
-    // Mark tiles as swapping for visual feedback
-    setSwappingTileIds(new Set([tile.id, targetTile.id]));
-    setGamePhase(GAME_PHASE.SWAPPING);
-
-    const swappedTiles = tiles.map(t => {
-      if (t.id === tile.id) {
-        return { ...t, x: targetX, y: targetY };
-      }
-      if (t.id === targetTile.id) {
-        return { ...t, x: tile.x, y: tile.y };
-      }
-      return t;
-    });
-
-    // Check if swap creates a match
-    const matches = findClearableTiles(swappedTiles, GRID_SIZE);
-
-    if (matches.length > 0) {
-      // Valid swap - keep it and start clearing
-      setTiles(swappedTiles);
-      soundManager.playClear(1);
-
-      const now = Date.now();
-      const timeSinceLastClear = now - lastClearTime;
-      const newCombo = updateCombo(combo, true, timeSinceLastClear);
-      setCombo(newCombo);
-      if (newCombo > maxCombo) setMaxCombo(newCombo);
-      if (newCombo > 1) soundManager.playCombo(newCombo);
-      setLastClearTime(now);
-
-      // Quick timing for responsive feel
-      setTimeout(() => {
-        setSwappingTileIds(new Set());
-        processCascadeStep(matches, 0);
-      }, 80);
-    } else {
-      // Invalid swap - animate back quickly
-      setTiles(swappedTiles);
-      soundManager.playNearMiss();
-
-      setTimeout(() => {
-        setTiles(tiles); // Revert
-        setSwappingTileIds(new Set());
-        setGamePhase(GAME_PHASE.IDLE);
-      }, 120);
-    }
-  }, [tiles, isGameOver, gamePhase, initSound, lastClearTime, combo, maxCombo, processCascadeStep]);
-
-  // ============================================
   // TILE CLEAR HANDLER (for click/tap on clearable)
   // ============================================
 
@@ -1098,19 +999,6 @@ ${streak > 1 ? `🔥 ${streak} Day Streak!` : ''}`;
                 {entropyLevel > 80 ? '⚠ CRITICAL' : entropyLevel > 60 ? 'HIGH' : entropyLevel > 30 ? 'STABLE' : 'LOW'}
               </div>
             </motion.div>
-
-            {/* Hint Button */}
-            {validMoves.length > 0 && clearableTileIds.length === 0 && (
-              <motion.button
-                className="bg-gradient-to-r from-yellow-600 to-amber-500 border-2 border-yellow-400 rounded-xl px-3 py-2 text-sm font-rajdhani font-bold text-white shadow-lg"
-                style={{ boxShadow: '0 0 15px #ffd70060' }}
-                whileHover={{ scale: 1.05, boxShadow: '0 0 25px #ffd700' }}
-                whileTap={{ scale: 0.95 }}
-                onClick={showHint}
-              >
-                💡 HINT
-              </motion.button>
-            )}
 
             {/* Control Buttons */}
             <div className="flex flex-col gap-1">
@@ -1359,14 +1247,10 @@ ${streak > 1 ? `🔥 ${streak} Day Streak!` : ''}`;
                     key={tile.id}
                     tile={tile}
                     onClear={handleTileClear}
-                    onSwap={handleSwap}
                     isClearable={clearableTileIds.includes(tile.id)}
-                    isSelected={selectedTile === tile.id}
                     cellSize={cellSize}
                     gridGap={4}
                     isNew={newTileIds.has(tile.id)}
-                    isSwapping={swappingTileIds.has(tile.id)}
-                    isHinted={hintTileIds.has(tile.id)}
                   />
                 ))}
               </AnimatePresence>
@@ -1388,10 +1272,10 @@ ${streak > 1 ? `🔥 ${streak} Day Streak!` : ''}`;
                   >
                     <div className="text-2xl font-impact text-neon-amber mb-2"
                       style={{ textShadow: '0 0 20px #ffb000' }}>
-                      NO MOVES!
+                      NO MATCHES!
                     </div>
                     <div className="text-sm text-text-muted mb-4 font-rajdhani">
-                      No valid swaps available
+                      No connected groups available
                     </div>
                     <motion.button
                       className="bg-gradient-to-r from-neon-violet to-purple-600 border-2 border-neon-violet rounded-xl px-6 py-3 text-lg font-rajdhani font-bold text-white"
@@ -1412,13 +1296,8 @@ ${streak > 1 ? `🔥 ${streak} Day Streak!` : ''}`;
         {/* Footer - Instructions */}
         <div className="text-center py-2">
           <span className="text-text-muted text-xs font-exo">
-            SWIPE tiles to create matches • TAP clearable groups • Build chains for bonus
+            TAP connected groups (2+) to clear • Bigger groups = more points • Build chains!
           </span>
-          {validMoves.length > 0 && clearableTileIds.length === 0 && !showNoMoves && (
-            <span className="text-neon-amber text-xs font-rajdhani ml-2 animate-pulse">
-              • Swap to create match!
-            </span>
-          )}
         </div>
       </motion.div>
 
