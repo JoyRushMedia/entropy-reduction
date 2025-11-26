@@ -70,11 +70,13 @@ export default function Tile({ tile, onClear, isClearable }) {
   const colors = TILE_COLORS[tile.type] || TILE_COLORS.cyan;
 
   const handleClick = () => {
-    if (!isClearable) return;
+    // Allow click even on non-clearable tiles - handler will check if match exists
+    // This provides better feedback than blocking clicks entirely
+    if (isClearable) {
+      setIsClearing(true);
+    }
 
-    setIsClearing(true);
-
-    // OPTIMIZED: Immediate callback for flow, visual cleanup happens async
+    // Always call onClear - the handler decides what to do
     onClear(tile.id);
   };
 
@@ -87,11 +89,10 @@ export default function Tile({ tile, onClear, isClearable }) {
         chamfer-sm
         ${colors.border}
         border-2
-        ${isClearable ? '' : 'bg-void-surface opacity-60 cursor-not-allowed'}
-        ${!isClearable ? 'pointer-events-none' : ''}
+        ${isClearable ? '' : 'opacity-70'}
       `}
       style={{
-        backgroundColor: isClearable ? colors.bg : undefined,
+        backgroundColor: colors.bg,
       }}
       // Entry animation (spawn)
       initial={{ scale: 0, rotate: -180, opacity: 0 }}
@@ -101,24 +102,16 @@ export default function Tile({ tile, onClear, isClearable }) {
         opacity: isClearing ? 0 : 1,
       }}
       transition={SPRING_CONFIG}
-      // Hover scale + glow
-      whileHover={
-        isClearable
-          ? {
-              scale: 1.1,
-              transition: { ...SPRING_CONFIG, stiffness: 500 },
-            }
-          : {}
-      }
+      // Hover scale + glow - more intense for clearable
+      whileHover={{
+        scale: isClearable ? 1.1 : 1.05,
+        transition: { ...SPRING_CONFIG, stiffness: 500 },
+      }}
       // Click feedback (press down)
-      whileTap={
-        isClearable
-          ? {
-              scale: 0.9,
-              transition: { duration: 0.05 },
-            }
-          : {}
-      }
+      whileTap={{
+        scale: 0.9,
+        transition: { duration: 0.05 },
+      }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onClick={handleClick}
