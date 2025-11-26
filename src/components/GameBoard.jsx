@@ -78,6 +78,7 @@ export default function GameBoard({ onHome, onHelp }) {
   const comboTimerRef = useRef(null);
   const soundInitialized = useRef(false);
   const lastDifficultyLevel = useRef(1);
+  const spawnTimerRef = useRef(null);
 
   // ============================================
   // GAME TIMER & DIFFICULTY PROGRESSION
@@ -354,37 +355,60 @@ Play at: entropy-reduction.game`;
   // ============================================
 
   useEffect(() => {
-    // Don't spawn when paused, game over, or board is nearly full
-    if (isPaused || isGameOver || tiles.length >= GRID_SIZE * GRID_SIZE - 4) return;
+    // Clear any existing timer
+    if (spawnTimerRef.current) {
+      clearTimeout(spawnTimerRef.current);
+      spawnTimerRef.current = null;
+    }
 
-    // Dynamic spawn delay based on game time (difficulty progression)
-    const spawnDelay = calculateSpawnDelay(gameTime);
+    // Don't spawn when paused, game over, or board is full
+    if (isPaused || isGameOver) return;
 
-    const spawnTimer = setTimeout(() => {
-      const spawnCount = calculateEntropySpawn(tiles.length, GRID_SIZE);
+    // Check if board has room for more tiles
+    if (tiles.length >= GRID_SIZE * GRID_SIZE - 2) return;
 
-      if (spawnCount > 0) {
+    // Calculate delay based on current game time (read from ref to avoid dependency)
+    const currentGameTime = Date.now() - gameStartTime;
+    const spawnDelay = calculateSpawnDelay(currentGameTime);
+
+    spawnTimerRef.current = setTimeout(() => {
+      // Re-check conditions before spawning
+      setTiles(prevTiles => {
+        if (prevTiles.length >= GRID_SIZE * GRID_SIZE - 2) {
+          return prevTiles;
+        }
+
+        const spawnCount = calculateEntropySpawn(prevTiles.length, GRID_SIZE);
+        if (spawnCount === 0) return prevTiles;
+
         const newTiles = [];
+        const allTiles = [...prevTiles];
+
         for (let i = 0; i < spawnCount; i++) {
-          const position = generateRandomPosition(GRID_SIZE, [...tiles, ...newTiles]);
+          const position = generateRandomPosition(GRID_SIZE, [...allTiles, ...newTiles]);
           if (position) {
-            newTiles.push({
+            const newTile = {
               id: tileIdCounter++,
               x: position.x,
               y: position.y,
               type: generateRandomTileType(),
-            });
+            };
+            newTiles.push(newTile);
           }
         }
 
-        if (newTiles.length > 0) {
-          setTiles(prev => [...prev, ...newTiles]);
-        }
-      }
+        if (newTiles.length === 0) return prevTiles;
+        return [...prevTiles, ...newTiles];
+      });
     }, spawnDelay);
 
-    return () => clearTimeout(spawnTimer);
-  }, [tiles, isPaused, isGameOver, gameTime]);
+    return () => {
+      if (spawnTimerRef.current) {
+        clearTimeout(spawnTimerRef.current);
+        spawnTimerRef.current = null;
+      }
+    };
+  }, [tiles.length, isPaused, isGameOver, gameStartTime]);
 
   // ============================================
   // CLEAR MECHANICS
