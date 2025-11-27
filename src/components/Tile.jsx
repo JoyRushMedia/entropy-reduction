@@ -46,6 +46,78 @@ const TILE_CONFIG = {
   },
 };
 
+// Special tile icons
+const SpecialIcon = ({ special, size = 28 }) => {
+  const icons = {
+    bomb: (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="14" r="8" fill="#1a1a1a" stroke="#ff6600" strokeWidth="2" />
+        <path d="M12 6V2M10 3h4" stroke="#ff6600" strokeWidth="2" strokeLinecap="round" />
+        <circle cx="9" cy="12" r="2" fill="rgba(255,255,255,0.3)" />
+        <path d="M14 4l2-2" stroke="#ffaa00" strokeWidth="2" strokeLinecap="round" />
+        <circle cx="16" cy="2" r="1" fill="#ffaa00" />
+      </svg>
+    ),
+    line_h: (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+        <rect x="2" y="10" width="20" height="4" rx="2" fill="#00f0ff" />
+        <path d="M2 12h20" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" />
+        <circle cx="4" cy="12" r="2" fill="#ffffff" />
+        <circle cx="20" cy="12" r="2" fill="#ffffff" />
+      </svg>
+    ),
+    line_v: (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+        <rect x="10" y="2" width="4" height="20" rx="2" fill="#00f0ff" />
+        <path d="M12 2v20" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" />
+        <circle cx="12" cy="4" r="2" fill="#ffffff" />
+        <circle cx="12" cy="20" r="2" fill="#ffffff" />
+      </svg>
+    ),
+    rainbow: (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="10" fill="url(#rainbowGrad)" />
+        <defs>
+          <linearGradient id="rainbowGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#ff0000" />
+            <stop offset="25%" stopColor="#ffff00" />
+            <stop offset="50%" stopColor="#00ff00" />
+            <stop offset="75%" stopColor="#00ffff" />
+            <stop offset="100%" stopColor="#ff00ff" />
+          </linearGradient>
+        </defs>
+        <circle cx="12" cy="12" r="5" fill="#ffffff" opacity="0.5" />
+        <path d="M12 7l1.5 3 3.5.5-2.5 2.5.5 3.5-3-1.5-3 1.5.5-3.5L7 10.5l3.5-.5L12 7z" fill="#ffffff" />
+      </svg>
+    ),
+  };
+  return icons[special] || null;
+};
+
+// Special tile configurations
+const SPECIAL_CONFIG = {
+  bomb: {
+    bgGradient: 'radial-gradient(circle, #ff6600 0%, #cc3300 50%, #1a0a00 100%)',
+    borderColor: '#ff6600',
+    glowColor: '#ff6600',
+  },
+  line_h: {
+    bgGradient: 'linear-gradient(90deg, #00f0ff 0%, #ffffff 50%, #00f0ff 100%)',
+    borderColor: '#00f0ff',
+    glowColor: '#00f0ff',
+  },
+  line_v: {
+    bgGradient: 'linear-gradient(0deg, #00f0ff 0%, #ffffff 50%, #00f0ff 100%)',
+    borderColor: '#00f0ff',
+    glowColor: '#00f0ff',
+  },
+  rainbow: {
+    bgGradient: 'conic-gradient(from 0deg, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)',
+    borderColor: '#ffffff',
+    glowColor: '#ffffff',
+  },
+};
+
 // SVG Icons for each tile type
 const TileIcon = ({ type, color, size = 28 }) => {
   const icons = {
@@ -135,7 +207,10 @@ export default function Tile({
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef({ x: 0, y: 0 });
 
-  const config = TILE_CONFIG[tile.type] || TILE_CONFIG.cyan;
+  // Use special config if tile is special, otherwise use regular config
+  const isSpecial = tile.special && SPECIAL_CONFIG[tile.special];
+  const config = isSpecial ? SPECIAL_CONFIG[tile.special] : (TILE_CONFIG[tile.type] || TILE_CONFIG.cyan);
+  const regularConfig = TILE_CONFIG[tile.type] || TILE_CONFIG.cyan;
   const iconSize = Math.max(24, cellSize * 0.5);
 
   // Calculate pixel position from grid coordinates
@@ -312,16 +387,45 @@ export default function Tile({
           <motion.div
             animate={{
               scale: isHovered ? 1.1 : 1,
+              rotate: isSpecial ? [0, 5, -5, 0] : 0,
             }}
-            transition={{ duration: 0.15 }}
+            transition={{
+              duration: isSpecial ? 2 : 0.15,
+              repeat: isSpecial ? Infinity : 0,
+              ease: 'easeInOut',
+            }}
           >
-            <TileIcon
-              type={config.icon}
-              color={config.iconColor}
-              size={iconSize}
-            />
+            {isSpecial ? (
+              <SpecialIcon special={tile.special} size={iconSize} />
+            ) : (
+              <TileIcon
+                type={regularConfig.icon}
+                color={regularConfig.iconColor}
+                size={iconSize}
+              />
+            )}
           </motion.div>
         </div>
+
+        {/* Special tile glow effect */}
+        {isSpecial && (
+          <motion.div
+            className="absolute inset-[-4px] pointer-events-none rounded-xl"
+            style={{
+              border: `3px solid ${config.glowColor}`,
+              boxShadow: `0 0 20px ${config.glowColor}, 0 0 40px ${config.glowColor}50`,
+            }}
+            animate={{
+              opacity: [0.6, 1, 0.6],
+              scale: [1, 1.02, 1],
+            }}
+            transition={{
+              duration: 1.5,
+              repeat: Infinity,
+              ease: 'easeInOut',
+            }}
+          />
+        )}
 
         {/* Corner accents */}
         <div
