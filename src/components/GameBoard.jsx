@@ -6,15 +6,12 @@ import ScorePopup from './ScorePopup';
 import LevelComplete from './LevelComplete';
 import {
   calculateReward,
-  calculateEntropySpawn,
-  generateRandomPosition,
   generateSmartTileType,
   calculateEntropyLevel,
   updateCombo,
   findClearableTiles,
   findMatchingGroup,
   findValidMoves,
-  calculateSpawnDelay,
   getDifficultyLevel,
   getStreakData,
   recordPlay,
@@ -132,7 +129,6 @@ export default function GameBoard({
   const comboTimerRef = useRef(null);
   const soundInitialized = useRef(false);
   const lastDifficultyLevel = useRef(1);
-  const spawnTimerRef = useRef(null);
 
   // ============================================
   // RESPONSIVE GRID SIZING
@@ -335,18 +331,28 @@ export default function GameBoard({
     tileIdCounter = 0;
 
     const initialTiles = [];
-    // Use level-specific initial tiles or default to 24 for endless
-    const initialCount = level?.initialTiles || 24;
 
-    for (let i = 0; i < initialCount; i++) {
-      const position = generateRandomPosition(GRID_SIZE, initialTiles);
-      if (position) {
-        // Use smart spawning that considers existing tiles
-        const type = generateSmartTileType(position.x, position.y, initialTiles, GRID_SIZE);
+    // Create a FULL board (64 tiles for 8x8 grid)
+    for (let y = 0; y < GRID_SIZE; y++) {
+      for (let x = 0; x < GRID_SIZE; x++) {
+        // Generate type that avoids creating initial matches
+        let type;
+        let attempts = 0;
+
+        do {
+          type = generateSmartTileType(x, y, initialTiles, GRID_SIZE);
+          const testTile = { id: tileIdCounter, x, y, type };
+          const testTiles = [...initialTiles, testTile];
+          const matches = findMatchingGroup(testTiles, tileIdCounter, GRID_SIZE);
+
+          if (matches.length === 0 || attempts > 10) break;
+          attempts++;
+        } while (attempts <= 10);
+
         initialTiles.push({
           id: tileIdCounter++,
-          x: position.x,
-          y: position.y,
+          x,
+          y,
           type,
         });
       }
@@ -479,28 +485,41 @@ ${streak > 1 ? `🔥 ${streak} Day Streak!` : ''}`;
   }, [togglePause, restartGame, onHelp, isGameOver]);
 
   // ============================================
-  // INITIALIZATION
+  // INITIALIZATION - Full 8x8 board (Candy Crush style)
   // ============================================
 
   useEffect(() => {
     const initialTiles = [];
-    // Use level-specific initial tiles or default to 24 for endless
-    const initialCount = level?.initialTiles || 24;
 
-    for (let i = 0; i < initialCount; i++) {
-      const position = generateRandomPosition(GRID_SIZE, initialTiles);
-      if (position) {
-        const type = generateSmartTileType(position.x, position.y, initialTiles, GRID_SIZE);
+    // Create a FULL board (64 tiles for 8x8 grid)
+    // No more random partial boards - this is proper match-3
+    for (let y = 0; y < GRID_SIZE; y++) {
+      for (let x = 0; x < GRID_SIZE; x++) {
+        // Generate type that avoids creating initial matches
+        let type;
+        let attempts = 0;
+
+        do {
+          type = generateSmartTileType(x, y, initialTiles, GRID_SIZE);
+          const testTile = { id: tileIdCounter, x, y, type };
+          const testTiles = [...initialTiles, testTile];
+          const matches = findMatchingGroup(testTiles, tileIdCounter, GRID_SIZE);
+
+          // If no match or too many attempts, accept this type
+          if (matches.length === 0 || attempts > 10) break;
+          attempts++;
+        } while (attempts <= 10);
+
         initialTiles.push({
           id: tileIdCounter++,
-          x: position.x,
-          y: position.y,
+          x,
+          y,
           type,
         });
       }
     }
 
-    // Ensure valid moves exist
+    // Ensure valid moves exist after filling board
     if (findValidMoves(initialTiles, GRID_SIZE).length === 0) {
       const shuffled = shuffleTiles(initialTiles, GRID_SIZE);
       shuffled.forEach((t, i) => initialTiles[i].type = t.type);
@@ -610,83 +629,12 @@ ${streak > 1 ? `🔥 ${streak} Day Streak!` : ''}`;
   }, [isLevelMode, level, score, tilesCleared, maxCombo, maxChain, entropyLevel, gameTime, isGameOver, levelComplete, isPaused, handleLevelComplete]);
 
   // ============================================
-  // ENTROPY SPAWNING
+  // TILE ID COUNTER (for spawning new tiles from top)
   // ============================================
 
-  useEffect(() => {
-    if (spawnTimerRef.current) {
-      clearTimeout(spawnTimerRef.current);
-      spawnTimerRef.current = null;
-    }
-
-    if (isPaused || isGameOver || gamePhase !== GAME_PHASE.IDLE) return;
-    if (tiles.length >= GRID_SIZE * GRID_SIZE - 2) return;
-
-    const currentGameTime = Date.now() - gameStartTime;
-    // Use level-specific spawn delay or calculate from game time
-    const spawnDelay = level?.spawnDelay || calculateSpawnDelay(currentGameTime);
-
-    spawnTimerRef.current = setTimeout(() => {
-      setTiles(prevTiles => {
-        if (prevTiles.length >= GRID_SIZE * GRID_SIZE - 2) {
-          return prevTiles;
-        }
-
-        const spawnCount = calculateEntropySpawn(prevTiles.length, GRID_SIZE);
-        if (spawnCount === 0) return prevTiles;
-
-        const spawnedTiles = [];
-        const allTiles = [...prevTiles];
-
-        for (let i = 0; i < spawnCount; i++) {
-          const position = generateRandomPosition(GRID_SIZE, [...allTiles, ...spawnedTiles]);
-          if (position) {
-            // Smart spawn: bias toward colors that create match opportunities
-            const type = generateSmartTileType(
-              position.x, position.y,
-              [...allTiles, ...spawnedTiles],
-              GRID_SIZE
-            );
-            const newTile = {
-              id: tileIdCounter++,
-              x: position.x,
-              y: position.y,
-              type,
-            };
-            spawnedTiles.push(newTile);
-          }
-        }
-
-        if (spawnedTiles.length > 0) {
-          soundManager.playSpawn();
-          // Mark spawned tiles as new for fall animation
-          setNewTileIds(prev => {
-            const updated = new Set(prev);
-            spawnedTiles.forEach(t => updated.add(t.id));
-            return updated;
-          });
-          // Clear new flag after animation
-          setTimeout(() => {
-            setNewTileIds(prev => {
-              const updated = new Set(prev);
-              spawnedTiles.forEach(t => updated.delete(t.id));
-              return updated;
-            });
-          }, 800);
-        }
-
-        if (spawnedTiles.length === 0) return prevTiles;
-        return [...prevTiles, ...spawnedTiles];
-      });
-    }, spawnDelay);
-
-    return () => {
-      if (spawnTimerRef.current) {
-        clearTimeout(spawnTimerRef.current);
-        spawnTimerRef.current = null;
-      }
-    };
-  }, [tiles.length, isPaused, isGameOver, gameStartTime, gamePhase, level?.spawnDelay]);
+  const getNextTileId = useCallback(() => {
+    return tileIdCounter++;
+  }, []);
 
   // ============================================
   // CASCADE PROCESSING
@@ -776,7 +724,27 @@ ${streak > 1 ? `🔥 ${streak} Day Streak!` : ''}`;
       setTiles(prevTiles => {
         const remainingTiles = prevTiles.filter(t => !tilesToClear.includes(t.id));
         setGamePhase(GAME_PHASE.FALLING);
-        const { newTiles } = applyGravity(remainingTiles, GRID_SIZE);
+
+        // Apply gravity AND spawn new tiles from top (Candy Crush style)
+        const { newTiles, spawnedTiles } = applyGravity(remainingTiles, GRID_SIZE, getNextTileId);
+
+        // Mark spawned tiles as new for fall-in animation
+        if (spawnedTiles && spawnedTiles.length > 0) {
+          soundManager.playSpawn();
+          setNewTileIds(prev => {
+            const updated = new Set(prev);
+            spawnedTiles.forEach(t => updated.add(t.id));
+            return updated;
+          });
+          // Clear new flag after animation
+          setTimeout(() => {
+            setNewTileIds(prev => {
+              const updated = new Set(prev);
+              spawnedTiles.forEach(t => updated.delete(t.id));
+              return updated;
+            });
+          }, 600);
+        }
 
         setTimeout(() => {
           setTiles(newTiles);
@@ -799,7 +767,7 @@ ${streak > 1 ? `🔥 ${streak} Day Streak!` : ''}`;
         return newTiles;
       });
     }, GAME_CONFIG.CLEAR_ANIMATION_MS);
-  }, [combo, tiles, createScorePopup]);
+  }, [combo, tiles, createScorePopup, getNextTileId]);
 
   // ============================================
   // SWAP HANDLER

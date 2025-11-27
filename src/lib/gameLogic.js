@@ -668,16 +668,19 @@ export function generateInitialBoard(gridSize, tileCount) {
 
 /**
  * Applies gravity to tiles - makes tiles fall down to fill gaps
+ * ALSO spawns new tiles from the TOP of each column (Candy Crush style)
  * Returns the new tile positions and fall information
  *
  * @param {Array} tiles - Current tiles array
  * @param {number} gridSize - Size of the grid
- * @returns {Object} - { newTiles, fallAnimations }
+ * @param {function} getNextTileId - Function to get next tile ID (optional)
+ * @returns {Object} - { newTiles, fallAnimations, spawnedTiles }
  */
-export function applyGravity(tiles, gridSize) {
+export function applyGravity(tiles, gridSize, getNextTileId = null) {
   // Create a copy of tiles to modify
   const newTiles = tiles.map(t => ({ ...t }));
   const fallAnimations = []; // Track which tiles need fall animation
+  const spawnedTiles = []; // Track newly spawned tiles
 
   // Process each column from bottom to top
   for (let x = 0; x < gridSize; x++) {
@@ -721,10 +724,42 @@ export function applyGravity(tiles, gridSize) {
           tile.y = newY;
         }
       }
+
+      // SPAWN NEW TILES FROM TOP to fill empty slots
+      if (getNextTileId) {
+        // After gravity, count how many empty slots are at top of column
+        const tilesInColumn = columnTiles.length;
+        const emptySlots = gridSize - tilesInColumn;
+
+        for (let i = 0; i < emptySlots; i++) {
+          const newY = i; // Fill from top (y=0, 1, 2, etc.)
+          const type = generateSmartTileType(x, newY, [...newTiles, ...spawnedTiles], gridSize);
+          const newTile = {
+            id: getNextTileId(),
+            x: x,
+            y: newY,
+            type,
+            isNew: true, // Mark as new for animation
+          };
+          spawnedTiles.push(newTile);
+
+          // Record fall animation for spawned tile (falling from above screen)
+          fallAnimations.push({
+            tileId: newTile.id,
+            fromY: -1 - (emptySlots - 1 - i), // Start above screen
+            toY: newY,
+            distance: emptySlots - i,
+            isSpawned: true,
+          });
+        }
+      }
     }
   }
 
-  return { newTiles, fallAnimations };
+  // Combine existing tiles with spawned tiles
+  const allTiles = [...newTiles, ...spawnedTiles];
+
+  return { newTiles: allTiles, fallAnimations, spawnedTiles };
 }
 
 /**
