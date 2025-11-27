@@ -370,6 +370,118 @@ export function updateCombo(currentCombo, successful, timeSinceLastClear = 0) {
 
 const TILE_TYPES = ['cyan', 'magenta', 'amber', 'violet'];
 
+// Special tile types - created by matching 4+ tiles
+export const SPECIAL_TILES = {
+  BOMB: 'bomb',       // Match 4 in L/T shape - clears 3x3 area
+  LINE_H: 'line_h',   // Match 4 in row - clears entire row
+  LINE_V: 'line_v',   // Match 4 in column - clears entire column
+  RAINBOW: 'rainbow', // Match 5+ - matches any color, clears all of one type
+};
+
+// Spawn chances for special tiles during normal spawning (rare treats)
+const SPECIAL_SPAWN_CHANCE = {
+  [SPECIAL_TILES.BOMB]: 0.02,    // 2% chance
+  [SPECIAL_TILES.LINE_H]: 0.015, // 1.5% chance
+  [SPECIAL_TILES.LINE_V]: 0.015, // 1.5% chance
+  [SPECIAL_TILES.RAINBOW]: 0.005, // 0.5% chance (very rare)
+};
+
+/**
+ * Determines if a tile is a special tile
+ */
+export function isSpecialTile(tile) {
+  return tile && Object.values(SPECIAL_TILES).includes(tile.special);
+}
+
+/**
+ * Get tiles to clear when a special tile is activated
+ */
+export function getSpecialTileClearTargets(tile, allTiles, gridSize) {
+  const targets = new Set();
+  targets.add(tile.id);
+
+  switch (tile.special) {
+    case SPECIAL_TILES.BOMB:
+      // Clear 3x3 area around the tile
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          const targetX = tile.x + dx;
+          const targetY = tile.y + dy;
+          if (targetX >= 0 && targetX < gridSize && targetY >= 0 && targetY < gridSize) {
+            const target = allTiles.find(t => t.x === targetX && t.y === targetY);
+            if (target) targets.add(target.id);
+          }
+        }
+      }
+      break;
+
+    case SPECIAL_TILES.LINE_H:
+      // Clear entire row
+      allTiles.forEach(t => {
+        if (t.y === tile.y) targets.add(t.id);
+      });
+      break;
+
+    case SPECIAL_TILES.LINE_V:
+      // Clear entire column
+      allTiles.forEach(t => {
+        if (t.x === tile.x) targets.add(t.id);
+      });
+      break;
+
+    case SPECIAL_TILES.RAINBOW: {
+      // Clear all tiles of the same base color, or random color if no color
+      const targetColor = tile.type || TILE_TYPES[Math.floor(Math.random() * TILE_TYPES.length)];
+      allTiles.forEach(t => {
+        if (t.type === targetColor) targets.add(t.id);
+      });
+      break;
+    }
+  }
+
+  return Array.from(targets);
+}
+
+/**
+ * Determine what special tile to create based on match pattern
+ */
+export function determineSpecialTileFromMatch(matchedTiles) {
+  if (matchedTiles.length >= 5) {
+    return SPECIAL_TILES.RAINBOW;
+  }
+
+  if (matchedTiles.length === 4) {
+    // Check if it's a horizontal or vertical line
+    const xs = matchedTiles.map(t => t.x);
+    const ys = matchedTiles.map(t => t.y);
+    const uniqueXs = new Set(xs).size;
+    const uniqueYs = new Set(ys).size;
+
+    if (uniqueYs === 1) return SPECIAL_TILES.LINE_H; // Horizontal line
+    if (uniqueXs === 1) return SPECIAL_TILES.LINE_V; // Vertical line
+    return SPECIAL_TILES.BOMB; // L or T shape
+  }
+
+  return null; // Normal match, no special tile
+}
+
+/**
+ * Maybe spawn a special tile (for random spawning)
+ */
+export function maybeGetSpecialType() {
+  const roll = Math.random();
+  let cumulative = 0;
+
+  for (const [special, chance] of Object.entries(SPECIAL_SPAWN_CHANCE)) {
+    cumulative += chance;
+    if (roll < cumulative) {
+      return special;
+    }
+  }
+
+  return null; // No special tile
+}
+
 /**
  * Creates a grid map for quick tile lookup
  * @param {Array} tiles - Array of tile objects
@@ -768,12 +880,16 @@ export function applyGravity(tiles, gridSize, getNextTileId = null) {
             console.warn(`[Gravity] Could not find non-matching tile for (${x},${newY}) after ${maxAttempts} attempts`);
           }
 
+          // Check if this should be a special tile (rare spawn)
+          const specialType = maybeGetSpecialType();
+
           const newTile = {
             id: getNextTileId(),
             x: x,
             y: newY,
             type,
             isNew: true,
+            special: specialType || undefined, // Add special property if applicable
           };
           spawnedTiles.push(newTile);
 

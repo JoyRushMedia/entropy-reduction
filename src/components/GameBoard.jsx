@@ -14,11 +14,12 @@ import {
   findValidMoves,
   getDifficultyLevel,
   getStreakData,
-  recordPlay,
   applyGravity,
   findAllMatches,
   shuffleTiles,
   GAME_CONFIG,
+  isSpecialTile,
+  getSpecialTileClearTargets,
 } from '../lib/gameLogic';
 import {
   getLevel,
@@ -104,7 +105,7 @@ export default function GameBoard({
   const [difficultyLevel, setDifficultyLevel] = useState(1);
   const [maxCombo, setMaxCombo] = useState(0);
   const [tilesCleared, setTilesCleared] = useState(0);
-  const [streak, setStreak] = useState(() => {
+  const [streak] = useState(() => {
     const data = getStreakData();
     return data.streak;
   });
@@ -671,8 +672,8 @@ ${streak > 1 ? `🔥 ${streak} Day Streak!` : ''}`;
 
   const MAX_CASCADE_LEVEL = 10; // Safety limit to prevent infinite cascades
 
-  const processCascadeStep = useCallback((tilesToClear, currentCascadeLevel) => {
-    if (tilesToClear.length === 0 || currentCascadeLevel >= MAX_CASCADE_LEVEL) {
+  const processCascadeStep = useCallback((tilesToClearInput, currentCascadeLevel) => {
+    if (tilesToClearInput.length === 0 || currentCascadeLevel >= MAX_CASCADE_LEVEL) {
       setGamePhase(GAME_PHASE.IDLE);
       cascadeLevelRef.current = 0;
       return;
@@ -680,8 +681,8 @@ ${streak > 1 ? `🔥 ${streak} Day Streak!` : ''}`;
 
     setGamePhase(GAME_PHASE.CLEARING);
 
-    const basePoints = GAME_CONFIG.BASE_POINTS_PER_CLEAR * tilesToClear.length;
-    const matchBonus = tilesToClear.length > 3 ? 1 + (tilesToClear.length - 3) * 0.5 : 1;
+    const basePoints = GAME_CONFIG.BASE_POINTS_PER_CLEAR * tilesToClearInput.length;
+    const matchBonus = tilesToClearInput.length > 3 ? 1 + (tilesToClearInput.length - 3) * 0.5 : 1;
     const reward = calculateReward(
       Math.floor(basePoints * matchBonus),
       combo,
@@ -689,11 +690,11 @@ ${streak > 1 ? `🔥 ${streak} Day Streak!` : ''}`;
     );
 
     setScore(prev => prev + reward.points);
-    setTilesCleared(prev => prev + tilesToClear.length);
+    setTilesCleared(prev => prev + tilesToClearInput.length);
 
     // Create score popup at first cleared tile
-    if (tilesToClear.length > 0) {
-      const firstTileId = tilesToClear[0];
+    if (tilesToClearInput.length > 0) {
+      const firstTileId = tilesToClearInput[0];
       const firstTile = tiles.find(t => t.id === firstTileId);
       if (firstTile) {
         createScorePopup(firstTileId, reward.points, combo, currentCascadeLevel > 0, firstTile.type);
@@ -701,10 +702,10 @@ ${streak > 1 ? `🔥 ${streak} Day Streak!` : ''}`;
     }
 
     // Screen flash for big combos or cascades
-    if (combo >= 3 || currentCascadeLevel >= 1 || tilesToClear.length >= 5) {
+    if (combo >= 3 || currentCascadeLevel >= 1 || tilesToClearInput.length >= 5) {
       const flashColor = combo >= 5 ? '#ffb000' :
                          currentCascadeLevel >= 2 ? '#a855f7' :
-                         tilesToClear.length >= 5 ? '#00f0ff' : '#ffffff';
+                         tilesToClearInput.length >= 5 ? '#00f0ff' : '#ffffff';
       setScreenFlash(flashColor);
       setTimeout(() => setScreenFlash(null), 150);
     }
@@ -722,13 +723,32 @@ ${streak > 1 ? `🔥 ${streak} Day Streak!` : ''}`;
         setShake(false);
       }, 800);
     } else {
-      soundManager.playClear(1 + (tilesToClear.length - 3) * 0.2);
+      soundManager.playClear(1 + (tilesToClearInput.length - 3) * 0.2);
     }
 
     // Use a single timeout chain instead of nested callbacks
     setTimeout(() => {
       // Step 1: Remove cleared tiles and apply gravity
+      // Also handle special tile effects here where we have access to prevTiles
       setTiles(prevTiles => {
+        // Expand clear to include special tile effects
+        let tilesToClear = [...tilesToClearInput];
+
+        const specialTilesInMatch = prevTiles.filter(
+          t => tilesToClearInput.includes(t.id) && isSpecialTile(t)
+        );
+
+        // Activate each special tile's effect
+        specialTilesInMatch.forEach(specialTile => {
+          const extraTargets = getSpecialTileClearTargets(specialTile, prevTiles, GRID_SIZE);
+          extraTargets.forEach(id => {
+            if (!tilesToClear.includes(id)) {
+              tilesToClear.push(id);
+            }
+          });
+          soundManager.playBigClear();
+        });
+
         const remainingTiles = prevTiles.filter(t => !tilesToClear.includes(t.id));
         const { newTiles, spawnedTiles } = applyGravity(remainingTiles, GRID_SIZE, getNextTileId);
 
@@ -776,7 +796,7 @@ ${streak > 1 ? `🔥 ${streak} Day Streak!` : ''}`;
         return newTiles;
       });
     }, GAME_CONFIG.CLEAR_ANIMATION_MS);
-  }, [combo, createScorePopup, getNextTileId]); // Removed 'tiles' - we use prevTiles/currentTiles
+  }, [combo, tiles, createScorePopup, getNextTileId]);
 
   // ============================================
   // SWAP HANDLER
