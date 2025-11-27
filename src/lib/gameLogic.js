@@ -399,9 +399,9 @@ export function findAllMatches(tiles, gridSize) {
 
     for (let x = 0; x <= gridSize; x++) {
       const tile = grid[`${x},${y}`];
-      const tileType = tile?.type;
+      const tileType = tile ? tile.type : null;
 
-      if (tileType === runType && tileType !== null) {
+      if (tileType && tileType === runType) {
         runTiles.push(tile);
       } else {
         // End of run - check if it's a match (3+)
@@ -422,9 +422,9 @@ export function findAllMatches(tiles, gridSize) {
 
     for (let y = 0; y <= gridSize; y++) {
       const tile = grid[`${x},${y}`];
-      const tileType = tile?.type;
+      const tileType = tile ? tile.type : null;
 
-      if (tileType === runType && tileType !== null) {
+      if (tileType && tileType === runType) {
         runTiles.push(tile);
       } else {
         // End of run - check if it's a match (3+)
