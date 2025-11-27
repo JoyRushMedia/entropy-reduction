@@ -232,17 +232,20 @@ export default function GameBoard({
   }, [gameStartTime, isPaused, isGameOver]);
 
   // ============================================
-  // GAME OVER CHECK
+  // GAME OVER CHECK - Only for level mode time-out or explicit conditions
+  // Note: With a full-board match-3, entropy no longer triggers game over
+  // The "no moves" scenario is handled by the shuffle button
   // ============================================
 
-  useEffect(() => {
-    if (entropyLevel >= 100 && !isGameOver) {
-      setIsGameOver(true);
-      soundManager.playGameOver();
-      const { streak: newStreak } = recordPlay();
-      setStreak(newStreak);
-    }
-  }, [entropyLevel, isGameOver]);
+  // Entropy-based game over is disabled for Candy Crush style gameplay
+  // useEffect(() => {
+  //   if (entropyLevel >= 100 && !isGameOver) {
+  //     setIsGameOver(true);
+  //     soundManager.playGameOver();
+  //     const { streak: newStreak } = recordPlay();
+  //     setStreak(newStreak);
+  //   }
+  // }, [entropyLevel, isGameOver]);
 
   // ============================================
   // COMBO TIMER
@@ -1044,47 +1047,32 @@ ${streak > 1 ? `🔥 ${streak} Day Streak!` : ''}`;
             </motion.div>
           </div>
 
-          {/* Right Side - Entropy + Controls */}
+          {/* Right Side - Moves Counter + Controls */}
           <div className="flex items-center gap-3">
-            {/* Entropy Meter - Larger and more prominent */}
+            {/* Available Moves Counter */}
             <motion.div
-              className="bg-void-surface/90 border-2 rounded-xl px-4 py-2 min-w-[140px]"
+              className="bg-void-surface/90 border-2 rounded-xl px-4 py-2 min-w-[100px]"
               style={{
-                borderColor: entropyLevel > 70 ? '#ff3366' : entropyLevel > 40 ? '#ffb000' : '#22c55e',
-                boxShadow: entropyLevel > 70 ? '0 0 25px #ff336660' : '0 0 15px #00f0ff20',
+                borderColor: validMoves.length === 0 ? '#ff3366' : validMoves.length < 5 ? '#ffb000' : '#22c55e',
+                boxShadow: validMoves.length === 0 ? '0 0 25px #ff336660' : '0 0 15px #00f0ff20',
               }}
               animate={{
-                scale: entropyLevel > 85 ? [1, 1.02, 1] : 1,
-                borderColor: entropyLevel > 85 ? ['#ff3366', '#ff6688', '#ff3366'] : undefined,
+                scale: validMoves.length === 0 ? [1, 1.02, 1] : 1,
               }}
-              transition={{ duration: 0.4, repeat: entropyLevel > 85 ? Infinity : 0 }}
+              transition={{ duration: 0.4, repeat: validMoves.length === 0 ? Infinity : 0 }}
             >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-rajdhani tracking-widest uppercase"
-                  style={{ color: entropyLevel > 70 ? '#ff3366' : entropyLevel > 40 ? '#ffb000' : '#22c55e' }}>
-                  Entropy
-                </span>
-                <span className="text-xl font-impact text-white">
-                  {entropyLevel}%
-                </span>
+              <div className="text-xs font-rajdhani tracking-widest uppercase text-center"
+                style={{ color: validMoves.length === 0 ? '#ff3366' : validMoves.length < 5 ? '#ffb000' : '#22c55e' }}>
+                Moves
               </div>
-              <div className="h-2 bg-void-deep rounded-full overflow-hidden mt-1">
-                <motion.div
-                  className="h-full rounded-full"
-                  style={{
-                    background: entropyLevel > 70
-                      ? 'linear-gradient(90deg, #ff6666, #ff3366)'
-                      : entropyLevel > 40
-                        ? 'linear-gradient(90deg, #22c55e, #ffb000)'
-                        : 'linear-gradient(90deg, #22c55e, #4ade80)',
-                  }}
-                  animate={{ width: `${entropyLevel}%` }}
-                  transition={{ duration: 0.3 }}
-                />
-              </div>
-              <div className="text-[9px] text-text-muted mt-0.5 text-center font-rajdhani">
-                {entropyLevel > 80 ? '⚠ CRITICAL' : entropyLevel > 60 ? 'HIGH' : entropyLevel > 30 ? 'STABLE' : 'LOW'}
-              </div>
+              <motion.div
+                className="text-2xl font-impact text-white text-center"
+                key={validMoves.length}
+                initial={{ scale: 1.2 }}
+                animate={{ scale: 1 }}
+              >
+                {validMoves.length}
+              </motion.div>
             </motion.div>
 
             {/* Hint Button - show when valid moves exist */}
