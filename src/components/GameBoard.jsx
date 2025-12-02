@@ -271,7 +271,7 @@ export default function GameBoard({
         setDifficultyLevel(newDifficulty);
         soundManager.playDifficultyUp();
       }
-    }, 100);
+    }, 250);
 
     return () => clearInterval(timer);
   }, [gameStartTime, isPaused, isGameOver, gameMode, score, timedHighScore, showModeSelect]);

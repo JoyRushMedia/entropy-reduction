@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { memo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 
 /**
@@ -192,7 +192,7 @@ const SCALE_SPRING = {
   damping: 25,
 };
 
-export default function Tile({
+function Tile({
   tile,
   onClear,
   onSwap,
@@ -442,3 +442,24 @@ export default function Tile({
     </motion.div>
   );
 }
+
+const propsAreEqual = (prev, next) => {
+  if (prev.cellSize !== next.cellSize || prev.gridGap !== next.gridGap) return false;
+  if (prev.isClearable !== next.isClearable) return false;
+  if (prev.isNew !== next.isNew) return false;
+  if (prev.isSwapping !== next.isSwapping) return false;
+  if (prev.isHinted !== next.isHinted) return false;
+
+  const prevTile = prev.tile;
+  const nextTile = next.tile;
+
+  return (
+    prevTile.id === nextTile.id &&
+    prevTile.x === nextTile.x &&
+    prevTile.y === nextTile.y &&
+    prevTile.type === nextTile.type &&
+    prevTile.special === nextTile.special
+  );
+};
+
+export default memo(Tile, propsAreEqual);
