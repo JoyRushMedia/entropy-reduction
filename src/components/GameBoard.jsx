@@ -186,10 +186,10 @@ export default function GameBoard({
   // MEMOIZED COMPUTATIONS
   // ============================================
 
-  // Find existing matches (for auto-clear after cascades)
-  const clearableTileIds = useMemo(() => {
-    if (gamePhase !== GAME_PHASE.IDLE) return [];
-    return findClearableTiles(tiles, GRID_SIZE);
+  // Find existing matches (for auto-clear after cascades) - use Set for O(1) lookups
+  const clearableTileIdSet = useMemo(() => {
+    if (gamePhase !== GAME_PHASE.IDLE) return new Set();
+    return new Set(findClearableTiles(tiles, GRID_SIZE));
   }, [tiles, gamePhase]);
 
   // Find valid swap moves
@@ -212,10 +212,10 @@ export default function GameBoard({
   const hasNoMoves = useMemo(() => {
     return (
       validMoves.length === 0 &&
-      clearableTileIds.length === 0 &&
+      clearableTileIdSet.size === 0 &&
       tiles.length >= GRID_SIZE * GRID_SIZE
     );
-  }, [validMoves.length, clearableTileIds.length, tiles.length]);
+  }, [validMoves.length, clearableTileIdSet.size, tiles.length]);
 
   // Show hint - highlight a random valid move
   const showHint = useCallback(() => {
@@ -1066,7 +1066,7 @@ ${streak > 1 ? `🔥 ${streak} Day Streak!` : ''}`;
     // If no tile selected, select this one
     if (selectedTileId === null) {
       // First check if the tile is clearable - if so, clear it instead of selecting
-      if (clearableTileIds.includes(tile.id)) {
+      if (clearableTileIdSet.has(tile.id)) {
         handleTileClear(tile.id);
         return;
       }
@@ -1097,14 +1097,14 @@ ${streak > 1 ? `🔥 ${streak} Day Streak!` : ''}`;
       handleSwap(selectedTile, direction);
     } else {
       // Not adjacent - if clearable, clear it; otherwise select the new tile
-      if (clearableTileIds.includes(tile.id)) {
+      if (clearableTileIdSet.has(tile.id)) {
         setSelectedTileId(null);
         handleTileClear(tile.id);
       } else {
         setSelectedTileId(tile.id);
       }
     }
-  }, [isGameOver, gamePhase, selectedTileId, tiles, clearableTileIds, handleSwap, handleTileClear, initSound]);
+  }, [isGameOver, gamePhase, selectedTileId, tiles, clearableTileIdSet, handleSwap, handleTileClear, initSound]);
 
   // ============================================
   // RENDER
@@ -1733,7 +1733,7 @@ ${streak > 1 ? `🔥 ${streak} Day Streak!` : ''}`;
                   onClear={handleTileClear}
                   onSwap={handleSwap}
                   onSelect={handleTileSelect}
-                  isClearable={clearableTileIds.includes(tile.id)}
+                  isClearable={clearableTileIdSet.has(tile.id)}
                   isSelected={selectedTileId === tile.id}
                   cellSize={cellSize}
                   gridGap={4}
