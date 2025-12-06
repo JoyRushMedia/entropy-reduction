@@ -638,13 +638,41 @@ export const WORLDS = [
 
 const PROGRESS_KEY = 'entropyReduction_levelProgress';
 
+const defaultProgress = () => ({
+  unlockedLevels: [1],
+  stars: {},
+  highScores: {},
+  bestTimes: {},
+});
+
+const getSafeLocalStorage = () => {
+  if (typeof window === 'undefined' || !window?.localStorage) {
+    return null;
+  }
+
+  try {
+    const testKey = '__entropyStorageTest__';
+    window.localStorage.setItem(testKey, '1');
+    window.localStorage.removeItem(testKey);
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+};
+
 /**
  * Get level progress from localStorage
  * @returns {Object} - { unlockedLevels: number[], stars: { levelId: stars }, highScores: { levelId: score } }
  */
 export function getLevelProgress() {
+  const storage = getSafeLocalStorage();
+
+  if (!storage) {
+    return defaultProgress();
+  }
+
   try {
-    const saved = localStorage.getItem(PROGRESS_KEY);
+    const saved = storage.getItem(PROGRESS_KEY);
     if (saved) {
       return JSON.parse(saved);
     }
@@ -653,12 +681,7 @@ export function getLevelProgress() {
   }
 
   // Default: only level 1 unlocked
-  return {
-    unlockedLevels: [1],
-    stars: {},
-    highScores: {},
-    bestTimes: {},
-  };
+  return defaultProgress();
 }
 
 /**
@@ -666,8 +689,12 @@ export function getLevelProgress() {
  * @param {Object} progress - Progress object
  */
 export function saveLevelProgress(progress) {
+  const storage = getSafeLocalStorage();
+
+  if (!storage) return;
+
   try {
-    localStorage.setItem(PROGRESS_KEY, JSON.stringify(progress));
+    storage.setItem(PROGRESS_KEY, JSON.stringify(progress));
   } catch {
     // Ignore
   }
